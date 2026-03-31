@@ -1,2 +1,6 @@
-# JuniorPython-Suite
-Suite architecture is designed for local-first, low-latency execution, utilizing dynamic module loading (importlib) to treat its own ecosystem as a mutable runtime environment. The system leverages PySide6 for the GUI, sandboxing tools into an extensible registry. The llm_agent handles autonomous tool generation and hardware-accelerated  via CUDA
+PyForge SuiteModular Python IDE and Automation Powerhouse for Windows 11.Engineered for CUDA-accelerated video rough cuts and local LLM agentic workflows.Deployment ProtocolInitialize environment:python -m venv venv
+call venv\Scripts\activate
+pip install -r requirements.txt
+Ensure Ollama is running locally:ollama serve
+ollama pull llama3.2
+Execute core runtime:python main.py

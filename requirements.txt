@@ -1,0 +1,1 @@
+PySide6>=6.6.0ollama>=0.1.7moviepy>=1.0.3ffmpeg-python>=0.2.0yt-dlp>=2023.12.30py7zr>=0.20.8patool>=2.1.1PyPDF2>=3.0.1piexif>=1.1.3pillow>=10.2.0APScheduler>=3.10.4pygments>=2.17.2jedi>=0.19.1ruff>=0.3.0black>=24.2.0pytest>=8.0.2psutil>=5.9.8
