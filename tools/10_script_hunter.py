@@ -3,10 +3,13 @@ import os
 import shutil
 import urllib.request
 import urllib.error
+import urllib.parse
+import json
+import re
 from pathlib import Path
 from PySide6.QtWidgets import (QVBoxLayout, QTreeView, QFileSystemModel, 
                                QSplitter, QPlainTextEdit, QPushButton, QHBoxLayout, 
-                               QLabel, QTabWidget, QWidget, QLineEdit, QListWidget)
+                               QLabel, QTabWidget, QWidget, QLineEdit, QListWidget, QListWidgetItem)
 from PySide6.QtCore import QDir, Qt, QThread, Signal
 from core.base_tool import BaseTool
 from core.sandbox import SandboxExecutor
@@ -33,18 +36,67 @@ class LlamaAuditThread(QThread):
         except Exception as e:
             self.audit_complete.emit(f"[HARDWARE FAULT] Neural inference failed: {str(e)}")
 
+class GitHubCrawlerThread(QThread):
+    """
+    Traverses Open Source GitHub repositories to extract .py tool vectors.
+    Bypasses git bloat by leveraging the GitHub Git Database API.
+    """
+    tree_ready = Signal(list)
+    error_signal = Signal(str)
+
+    def __init__(self, repo_url):
+        super().__init__()
+        self.repo_url = repo_url
+
+    def run(self):
+        match = re.search(r'github\.com/([^/]+)/([^/]+)', self.repo_url)
+        if not match:
+            self.error_signal.emit("[KERNEL FAULT] Invalid GitHub repository topology.")
+            return
+
+        owner, repo = match.groups()
+        repo = repo.replace('.git', '')
+
+        try:
+            # 1. Determine default branch topology
+            api_url = f"https://api.github.com/repos/{owner}/{repo}"
+            req = urllib.request.Request(api_url, headers={'User-Agent': 'JuniorPython-SDK'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                default_branch = data.get('default_branch', 'main')
+
+            # 2. Extract repository tree recursively
+            tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
+            req = urllib.request.Request(tree_url, headers={'User-Agent': 'JuniorPython-SDK'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                tree_data = json.loads(response.read().decode())
+                py_files = []
+                for item in tree_data.get('tree', []):
+                    if item['type'] == 'blob' and item['path'].endswith('.py'):
+                        raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{default_branch}/{item['path']}"
+                        py_files.append({"path": item['path'], "raw_url": raw_url})
+                self.tree_ready.emit(py_files)
+
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                self.error_signal.emit("[NETWORK FAULT] API Rate Limit Exceeded. Await cooldown.")
+            else:
+                self.error_signal.emit(f"[NETWORK FAULT] HTTP {e.code}: {e.reason}")
+        except Exception as e:
+            self.error_signal.emit(f"[SYSTEM FAULT] Extraction failed: {str(e)}")
+
 class ScriptHunterTool(BaseTool):
     """
     Filesystem and remote repository analysis tensor.
     Locates, audits, sandboxes, and injects external Python scripts into the core manifold.
+    Consolidates web extraction specifically for tool generation.
     """
     @classmethod
     def get_name(cls):
-        return "🔍 Script Hunter"
+        return "🔍 Script Hunter (Hub)"
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
         splitter = QSplitter(Qt.Horizontal)
         
         # Left Panel: Source Tabs (Local vs Remote)
@@ -53,7 +105,7 @@ class ScriptHunterTool(BaseTool):
         left_layout.setContentsMargins(0,0,0,0)
         
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabBar::tab { background: #2d2d30; padding: 8px; } QTabBar::tab:selected { background: #007acc; }")
+        self.tabs.setStyleSheet("QTabBar::tab { background: #2d2d30; padding: 8px; color: #d4d4d4;} QTabBar::tab:selected { background: #007acc; font-weight: bold; }")
         
         # Tab 1: Local Topology
         local_tab = QWidget()
@@ -74,22 +126,23 @@ class ScriptHunterTool(BaseTool):
         # Tab 2: Remote Repository (GitHub / Open Source)
         remote_tab = QWidget()
         remote_tab_layout = QVBoxLayout(remote_tab)
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("https://raw.githubusercontent.com/...")
-        btn_fetch = QPushButton("Fetch Remote Vector")
-        btn_fetch.clicked.connect(self.fetch_remote_script)
         
-        self.curated_list = QListWidget()
-        self.curated_list.addItem("https://raw.githubusercontent.com/psf/requests/main/requests/api.py")
-        self.curated_list.addItem("https://raw.githubusercontent.com/pallets/flask/main/src/flask/app.py")
-        self.curated_list.itemClicked.connect(lambda item: self.url_input.setText(item.text()))
+        self.repo_input = QLineEdit()
+        self.repo_input.setPlaceholderText("https://github.com/logsv/llm-video-editor")
         
-        remote_tab_layout.addWidget(QLabel("Ingest Open-Source Raw Targets:"))
-        remote_tab_layout.addWidget(self.url_input)
-        remote_tab_layout.addWidget(btn_fetch)
-        remote_tab_layout.addWidget(QLabel("Curated / History:"))
-        remote_tab_layout.addWidget(self.curated_list)
-        self.tabs.addTab(remote_tab, "Remote Hub")
+        btn_crawl = QPushButton("Crawl Repository Topology")
+        btn_crawl.setStyleSheet("background-color: #0e639c; font-weight: bold;")
+        btn_crawl.clicked.connect(self.crawl_remote_repo)
+        
+        self.remote_file_list = QListWidget()
+        self.remote_file_list.itemClicked.connect(self.fetch_remote_script)
+        
+        remote_tab_layout.addWidget(QLabel("Ingest Open-Source Repository:"))
+        remote_tab_layout.addWidget(self.repo_input)
+        remote_tab_layout.addWidget(btn_crawl)
+        remote_tab_layout.addWidget(QLabel("Discovered Tool Vectors (.py):"))
+        remote_tab_layout.addWidget(self.remote_file_list)
+        self.tabs.addTab(remote_tab, "Open-Source Hub")
         
         left_layout.addWidget(self.tabs)
         
@@ -131,7 +184,7 @@ class ScriptHunterTool(BaseTool):
         
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setSizes([350, 650])
+        splitter.setSizes([400, 600])
         
         layout.addWidget(splitter)
         self.current_filepath = None
@@ -140,7 +193,8 @@ class ScriptHunterTool(BaseTool):
     def preview_local_script(self, index):
         path = self.model.filePath(index)
         if not os.path.isdir(path) and path.endswith(".py"):
-            if not self.is_safe(path):
+            # Enforce global vault constraints (Security Protocol IV)
+            if hasattr(self, 'is_safe') and not self.is_safe(path):
                 self.preview.setPlainText("# [SECURITY LOCK] Cannot read from protected manifold.")
                 return
             self.current_filepath = path
@@ -149,29 +203,44 @@ class ScriptHunterTool(BaseTool):
                 self.preview.setPlainText(f.read())
             self.audit_log.clear()
 
-    def fetch_remote_script(self):
-        url = self.url_input.text().strip()
-        if not url: return
+    def crawl_remote_repo(self):
+        repo_url = self.repo_input.text().strip()
+        if not repo_url: return
         
-        self.audit_log.setPlainText(f">> Initializing HTTP GET request to: {url}")
+        self.audit_log.setPlainText(f">> Mapping repository geometry: {repo_url}")
+        self.remote_file_list.clear()
+        
+        self.crawler_thread = GitHubCrawlerThread(repo_url)
+        self.crawler_thread.tree_ready.connect(self._populate_remote_tree)
+        self.crawler_thread.error_signal.connect(lambda e: self.audit_log.appendPlainText(e))
+        self.crawler_thread.start()
+
+    def _populate_remote_tree(self, py_files):
+        self.audit_log.appendPlainText(f"[SUCCESS] Extracted {len(py_files)} Python vectors.")
+        for file_data in py_files:
+            item = QListWidgetItem(file_data['path'])
+            item.setData(Qt.UserRole, file_data['raw_url'])
+            self.remote_file_list.addItem(item)
+
+    def fetch_remote_script(self, item):
+        raw_url = item.data(Qt.UserRole)
+        self.current_filename = item.text().split('/')[-1]
+        
+        self.audit_log.setPlainText(f">> Ingesting raw vector: {raw_url}")
         try:
-            # Lean utility tier: urllib bypasses requests bloat
-            req = urllib.request.Request(url, headers={'User-Agent': 'JuniorPython/2.0'})
+            req = urllib.request.Request(raw_url, headers={'User-Agent': 'JuniorPython-SDK'})
             with urllib.request.urlopen(req, timeout=5) as response:
                 code_payload = response.read().decode('utf-8')
                 self.preview.setPlainText(code_payload)
                 self.current_filepath = None
-                self.current_filename = url.split('/')[-1]
-                if not self.current_filename.endswith('.py'):
-                    self.current_filename += ".py"
-                self.audit_log.appendPlainText(f"[SUCCESS] Payload ingested. {len(code_payload)} bytes active in memory.")
+                self.audit_log.appendPlainText(f"[SUCCESS] Payload ingested. {len(code_payload)} bytes active.")
         except urllib.error.URLError as e:
             self.audit_log.appendPlainText(f"[NETWORK FAULT] Unresolved vector: {e.reason}")
 
     def audit_script(self):
         code = self.preview.toPlainText()
         if not code: return
-        self.audit_log.setPlainText(">> Compiling context array for Local LLM (llama3.2:3b)...")
+        self.audit_log.setPlainText(">> Compiling context array for Local Neural Engine...")
         
         self.thread = LlamaAuditThread(code)
         self.thread.audit_complete.connect(self._render_audit)
@@ -180,21 +249,20 @@ class ScriptHunterTool(BaseTool):
     def _render_audit(self, response):
         self.audit_log.appendPlainText("\n[AUDIT COMPLETE]")
         self.audit_log.appendPlainText(response)
-        # Log to pipeline for architectural records
-        self.pipeline.append_log("security_audits", {"filename": self.current_filename, "audit": response})
+        if hasattr(self, 'pipeline'):
+            self.pipeline.append_log("security_audits", {"filename": self.current_filename, "audit": response})
 
     def inject_as_tool(self):
         code = self.preview.toPlainText()
         if not code: return
         
-        # Format filename to ensure sorting within the module manifold
         dest_name = f"99_{self.current_filename}"
         dest_path = self.app_context.tools_dir / dest_name
         
         with open(dest_path, 'w', encoding='utf-8') as f:
             f.write(code)
             
-        self.audit_log.appendPlainText(f">> File mirrored to core topology: {dest_path}")
+        self.audit_log.appendPlainText(f">> Vector mirrored to core topology: {dest_path}")
         self.app_context.load_tools()
 
     def sandbox_execute(self):
