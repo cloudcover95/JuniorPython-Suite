@@ -1,0 +1,13 @@
+[project]
+name = "juniorpython-suite"
+version = "0.2.0"
+description = "BitNet-powered Python automation and intelligent workflows"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["fastapi", "uvicorn", "jinja2"]
+
+[tool.ruff]
+select = ["E", "F", "I"]
+
+[tool.black]
+line-length = 88

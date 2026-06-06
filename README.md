@@ -1,11 +1,26 @@
-JuniorPython Suite Modular Python IDE & Edge-Compute SDKJuniorPython is a logic-dense, power-efficient development suite engineered for local-first execution on Apple Silicon (M4/M1) and Windows 11 (CUDA) environments. It operates as a sovereign manifold, bypassing cloud reliance for LLM inference, data processing, and automation.Core ArchitectureDynamic Plugin System: Tools are isolated .py scripts located in /tools/, hot-reloaded via importlib.Data Pipeline: High-throughput ingestion using Snappy-compressed .parquet vectors for zero-copy memory access.Multiprocess Sandbox: Isolated execution kernel for safe script testing with hardware resource monitoring (RAM/CPU).Security Protocol IV: Explicit path isolation for 01_Legal and 02_Assets to prevent agent traversal or indexing.Deployment ProtocolInitialize Hardware: Ensure Ollama is running locally for neural inference.Provision Environment:pip install -r requirements.txt
-ollama pull llama3.2:3b
-Execute Matrix:python main.py
-Repository Topologycore/: System kernels (Sandbox, Pipeline, BaseTool).tools/: Extensible tool manifold (Branches 01-27)..jp_cache/: Localized Parquet/JSONL data vault.
+# JuniorPython-Suite
 
-PyForge SuiteModular Python IDE and Automation Powerhouse for Windows 11.Engineered for CUDA-accelerated video rough cuts and local LLM agentic workflows.Deployment ProtocolInitialize environment:python -m venv venv
-call venv\Scripts\activate
-pip install -r requirements.txt
-Ensure Ollama is running locally:ollama serve
-ollama pull llama3.2
-Execute core runtime:python main.py
+**BitNet-Powered Python Automation & Workflow Platform**
+
+JuniorPython-Suite is the sovereign Python automation and workflow layer for JuniorCloud LLC.
+
+It turns Python scripting into an intelligent, BitNet-accelerated experience with a modern UI (inspired by JuniorHome).
+
+## Core Goals
+- Automate Python scripts and complex workflows
+- Native support for BitNet 1.58-bit and 3.0 ternary/quantized models
+- Visual + code workflow builder with real-time execution
+- Online learning via plasticity and memory systems
+- Translation, checks, and tests for running Python code with BitNet
+- Integration with RealDataRunner, VisionTextEngine, and JuniorMemSys
+
+Modernizing from dormant state into a production-grade automation platform.
+
+## Architecture
+- `bitnet_runner.py` — Core BitNet execution and translation layer
+- `workflow_engine.py` — Composable workflow system
+- `ui/` — Modern web UI for managing and running workflows
+- `training/` — Real data pipelines and online learning
+- `tests/` — BitNet compatibility and functionality tests
+
+Part of the broader JuniorCloud sovereign edge ecosystem.
